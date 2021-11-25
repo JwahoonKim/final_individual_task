@@ -1,9 +1,11 @@
-const { User, Coin, Asset } = require('./models');
+const { User, Coin, Asset, Key } = require('./models');
 
 const init = async () => {
     await User.deleteMany();
     await Asset.deleteMany();
     await Coin.deleteMany();
+    await Key.deleteMany();
+
     const coins = ['BTC', 'XRP', 'ETH', 'DOGE'];
 
     for (const _coin of coins) {
@@ -13,4 +15,5 @@ const init = async () => {
 
     console.log('completed');
 }
+
 init();

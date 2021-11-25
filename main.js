@@ -3,27 +3,35 @@ const mongoose = require('mongoose');
 const { body, validationResult } = require('express-validator');
 const crypto = require('crypto');
 // 폴더만 설정해주면 알아서 index.js 가져옴
-const { User, Coin, Asset } = require('./models'); 
+const { User, Coin, Asset, Key } = require('./models'); 
 const { encryptPassword, setAuth } = require('./utils');
 const { getCoinPrice } = require('./api');
 
 const app = express();
 const port = 3000;
 
+const COINS = {
+    bitcoin: 'btc',
+    ripple: 'xrp',
+    dogecoin: 'doge',
+    ethereum: 'eth',
+ };
+
 app.use(express.urlencoded({extended: true}));
 app.use(express.json());
 
-app.get('/coins', async (req, res) => {
-    const coins = await Coin.find({ isActive: true });
-    res.send(coins);
+// test용
+app.get('/', async (req, res) => {
+    const user = await User.findOne({ name: "kim123" }).populate('assets', 'name ');
+    res.send(user); 
 })
 
 app.post('/register',
-    body('email').isEmail(),
-    body('name').isLength({ min: 5 }),
-    body('password').isLength({ min: 8 }),
+    body('name').isLength({ min: 4, max: 12 }).isAlphanumeric(),
+    body('email').isEmail().isLength({ max: 100 }),
+    body('password').isLength({ min: 8, max: 16 }),
     async (req, res) => {
-        // validtaion
+        // validtaion check
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
            return res.status(400).send({ errors: errors.array()}); 
@@ -37,7 +45,7 @@ app.post('/register',
             user = User({ name, email, password: encryptedPassword });
             await user.save();
         } catch (err) {
-            return res.send({error: 'Email is duplicated'}).status(400);
+            return res.send({error: 'Name or Email is duplicated'}).status(400);
         }
 
         const coins = await Coin.find({ isActive: true });
@@ -47,39 +55,51 @@ app.post('/register',
         await usdAsset.save();
 
         for (const coin of coins) {
-            const asset = new Asset({ name: coin, balance: 0, user });
+            const asset = new Asset({ name: coin.name, balance: 0, user });
             await asset.save();
         }
 
-        res.send({ _id: user._id });
+        res.send({});
 })
 
-app.post('/login', async (res, req) => {
+app.post('/login', async (req, res) => {
     const { email, password } = req.body;
     const encryptedPassword = encryptPassword(password)
     const user = await User.findOne({ email, password: encryptedPassword });
 
-    if (user === null) return res.sendStatus(404);
+    if (user === null) return res.send({error: 'Invalid email or password'}).status(404);
 
-    user.key = encryptPassword(crypto.randomBytes(20));
-    await user.save();
+    const key = new Key({ keyValue: encryptPassword(crypto.randomBytes(20)), user });
+    await key.save(); 
 
-    res.send({ key: user.key });
+    res.send({ key: key.keyValue });
+})
+
+app.get('/coins', async (req, res) => {
+    const coins = await Coin.find({ isActive: true });
+    res.send(coins);
+    const coinList = coins.map(coin => coin.name.toLowerCase()); 
+    // res.send(coinList);
 })
 
 // 2번 인자 콜백함수 실행하고나서 3번째 인자 콜백 실행
-app.get('/balance', setAuth, async (req, res) => {
-    // setAuth에서 담아줬음 (req.user를)
+app.get('/assets', setAuth, async (req, res) => {
     const user = req.user;
-    const assets = Asset.find({ user });
-    res.send(assets);
+    const assets = await Asset.find({ user });
+    const userAssets = {};
+    assets.forEach(asset => {
+        if (asset.balance !== 0)
+            userAssets[asset.name.toLowerCase()] = asset.balance;
+    })
+    res.send(userAssets);
 })
 
-app.get('/coins/:coin_name', async (req, res) => {
-    const { coin_name } = req.params;
-    const price = await getCoinPrice(coin_name);
+app.get('/coins/:coinName', async (req, res) => {
+    const { coinName } = req.params;
+    const coinSymbol = COINS[coinName.toLowerCase()];
+    const price = await getCoinPrice(coinSymbol);
     if ( price ) res.send({ price });
-    else res.send({error: 'Invalid Coin name'}, 400);
+    else res.send({error: 'Invalid Coin name'}, 404);
 })
 
 app.post('/coin/:coinName/buy', setAuth, async (req, res) => {
