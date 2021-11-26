@@ -10,11 +10,14 @@ const { getCoinPrice } = require('./api');
 const app = express();
 const port = 3000;
 
+// 에이다, 폴카닷 코인 추가
 const COINS = {
     bitcoin: 'btc',
     ripple: 'xrp',
     dogecoin: 'doge',
     ethereum: 'eth',
+    cardano: 'ada',
+    polkadot: 'dot',
  };
 
 app.use(express.urlencoded({extended: true}));
@@ -77,9 +80,8 @@ app.post('/login', async (req, res) => {
 
 app.get('/coins', async (req, res) => {
     const coins = await Coin.find({ isActive: true });
-    res.send(coins);
     const coinList = coins.map(coin => coin.name.toLowerCase()); 
-    // res.send(coinList);
+    res.send(coinList);
 })
 
 // 2번 인자 콜백함수 실행하고나서 3번째 인자 콜백 실행
@@ -99,18 +101,84 @@ app.get('/coins/:coinName', async (req, res) => {
     const coinSymbol = COINS[coinName.toLowerCase()];
     const price = await getCoinPrice(coinSymbol);
     if ( price ) res.send({ price });
-    else res.send({error: 'Invalid Coin name'}, 404);
+    else res.send({error: 'Invalid Coin name, Please request by using FULLNAME of coin not SYMBOL!'}, 404);
 })
 
-app.post('/coin/:coinName/buy', setAuth, async (req, res) => {
+app.post('/coins/:coinName/buy', setAuth, async (req, res) => {
+    let { quantity, all } = req.body;
+    const { coinName } = req.params;
+    const coinSymbol = COINS[coinName];
+    if (!coinSymbol) return res.send({error: 'Invalid Coin name, Please request by using FULLNAME of coin not SYMBOL!'}, 400);
+    
+    if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
+    
     const user = req.user;
-    // logic 작성
-    const coinId = 'bitcoin';
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`;
-    const apiRes = await axios.get(url);
-    const price = apiRes.data[coinId].usd;
-    const { quantity } = req.body;
+    const usdAsset = await Asset.findOne({ user, name: 'USD' });
+    let usdBalance = usdAsset.balance;
+    const targetCoinAsset = await Asset.findOne({ user, name: coinSymbol.toUpperCase()});
+
+    const coinPrice = await getCoinPrice(coinSymbol);
+    let totalPrice = null;
+    let totalQuantity = null;
+
+    if (all) { // 전량 구매시
+        totalQuantity = parseInt(usdBalance / coinPrice);
+        totalPrice = coinPrice * totalQuantity;
+    } else { // quantity 구매시
+        totalQuantity = parseFloat(parseFloat(quantity).toFixed(4));
+        totalPrice = coinPrice * totalQuantity;
+        // 잔고 부족
+        if (usdBalance < totalPrice) return res.send({error: 'Not enough usdBalance'}, 400);
+    }
+
+
+
+    usdAsset.balance -= totalPrice;
+    targetCoinAsset.balance += totalQuantity;
+    await usdAsset.save();
+    await targetCoinAsset.save();
+
+    res.send({ price: coinPrice, quantity: totalQuantity });
 });
+
+app.post('/coins/:coinName/sell', setAuth, async (req, res) => {
+    // quantity가 숫자인지 check
+    let { quantity, all } = req.body;
+    const { coinName } = req.params;
+    const coinSymbol = COINS[coinName];
+    if (!coinSymbol) return res.send({error: 'Invalid Coin name, Please request by using FULLNAME of coin not SYMBOL!'}, 400);
+
+    if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
+
+    const user = req.user;
+    const usdAsset = await Asset.findOne({ user, name: 'USD' });
+    const targetCoinAsset = await Asset.findOne({ user, name: coinSymbol.toUpperCase()});
+    let targetCoinBalance = targetCoinAsset.balance;
+
+
+    quantity = parseFloat(parseFloat(quantity).toFixed(4));
+    const coinPrice = await getCoinPrice(coinSymbol);
+    let totalPrice = null;
+    let totalQuantity = null;
+
+    if (all) { // 전량 판매시
+        totalQuantity = targetCoinBalance;
+        totalPrice = coinPrice * totalQuantity;
+    } else { // quantity 판매시
+        totalQuantity = parseFloat(parseFloat(quantity).toFixed(4));
+        totalPrice = coinPrice * totalQuantity;
+        if (targetCoinBalance < totalQuantity) return res.send({ error: 'Not enough coinBalance'}, 400);
+    }
+
+    usdAsset.balance += totalPrice;
+    targetCoinAsset.balance -= totalQuantity;
+    await usdAsset.save();
+    await targetCoinAsset.save();
+
+    res.send({ price: coinPrice, quantity: totalQuantity });
+});
+
+
 
 app.listen(port, () => {
     console.log('listening...');

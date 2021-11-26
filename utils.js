@@ -28,7 +28,9 @@ const setAuth = async (req, res, next) => {
     req.user = userObj;
     next(); 
 }
+
 module.exports = {
     encryptPassword,
     setAuth,
+    // setAsset,
 }
