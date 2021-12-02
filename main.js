@@ -1,5 +1,6 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const crypto = require('crypto');
 // 폴더만 설정해주면 알아서 index.js 가져옴
@@ -72,20 +73,23 @@ app.post('/login', async (req, res) => {
 
     if (user === null) return res.send({error: 'Invalid email or password'}).status(404);
 
-    const key = new Key({ keyValue: encryptPassword(crypto.randomBytes(20)), user });
+    const publicKey = encryptPassword(crypto.randomBytes(20));
+    const secretKey = encryptPassword(crypto.randomBytes(20));
+    const key = new Key({ publicKey, secretKey, user });
+
     await key.save(); 
 
-    res.send({ key: key.keyValue });
+    res.send({ publicKey, secretKey });
 })
 
 app.get('/coins', async (req, res) => {
     const coins = await Coin.find({ isActive: true });
-    const coinList = coins.map(coin => coin.name.toLowerCase()); 
+    const coinList = coins.map(coin => coin.name); 
     res.send(coinList);
 })
 
 // 2번 인자 콜백함수 실행하고나서 3번째 인자 콜백 실행
-app.get('/assets', setAuth, async (req, res) => {
+app.get('/balance', setAuth, async (req, res) => {
     const user = req.user;
     const assets = await Asset.find({ user });
     const userAssets = {};

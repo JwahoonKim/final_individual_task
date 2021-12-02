@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
 const keySchema = new Schema({
-    keyValue: String,
+    publicKey: String,
+    secretKey: String,
     user: { type: Schema.Types.ObjectId, ref: 'User' },
 });
 
