@@ -10,7 +10,7 @@ const encryptPassword = (password) => {
 // 소수점 4자리수로 바꾸는 함수
 const decimalCut = (n) => {
     n *= 10000;
-    n = parseInt(n)
+    n = parseInt(n, 10);
     n /= 10000;
     return n
 }

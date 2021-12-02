@@ -1,6 +1,4 @@
 const express = require('express');
-const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const crypto = require('crypto');
 // 폴더만 설정해주면 알아서 index.js 가져옴
