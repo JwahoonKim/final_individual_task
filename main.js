@@ -32,7 +32,7 @@ app.post('/register',
         // validtaion check
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-           return res.status(400).send({ errors: errors.array()}); 
+           return res.send({ errors: errors.array()}, 400); 
         }
 
         const { name, email, password } = req.body;
@@ -43,7 +43,7 @@ app.post('/register',
             user = User({ name, email, password: encryptedPassword });
             await user.save();
         } catch (err) {
-            return res.send({error: 'Name or Email is duplicated'}).status(400);
+            return res.send({error: 'Name or Email is duplicated'}, 400);
         }
 
         const coins = await Coin.find({ isActive: true });
@@ -65,7 +65,7 @@ app.post('/login', async (req, res) => {
     const encryptedPassword = encryptPassword(password)
     const user = await User.findOne({ email, password: encryptedPassword });
 
-    if (user === null) return res.send({error: 'Invalid email or password'}).status(404);
+    if (user === null) return res.send({error: 'Invalid email or password'}, 404);
 
     const publicKey = encryptPassword(crypto.randomBytes(20));
     const secretKey = encryptPassword(crypto.randomBytes(20));
@@ -99,14 +99,14 @@ app.get('/coins/:coinName', async (req, res) => {
     const coinSymbol = COINS[coinName];
     const price = await getCoinPrice(coinSymbol);
     if ( price ) res.send({ price });
-    else res.send({error: 'Invalid Coin name'}).status(404);
+    else res.send({error: 'Invalid Coin name'}, 404);
 })
 
 app.post('/coins/:coinName/buy', quantityChecker, setAuth, async (req, res) => {
     let { quantity, all } = req.body;
     const { coinName } = req.params;
     const coinSymbol = COINS[coinName];
-    if (!coinSymbol) return res.send({ error: 'Invalid Coin name' }).status(400);
+    if (!coinSymbol) return res.send({ error: 'Invalid Coin name' }, 400);
     
     const user = req.user;
     const usdAsset = await Asset.findOne({ user, name: 'USD' });
@@ -124,7 +124,7 @@ app.post('/coins/:coinName/buy', quantityChecker, setAuth, async (req, res) => {
         totalQuantity = parseFloat(quantity);
         totalPrice = coinPrice * totalQuantity;
         // 잔고 부족
-        if (usdBalance < totalPrice) return res.send({error: 'Not enough usdBalance'}).status(400);
+        if (usdBalance < totalPrice) return res.send({error: 'Not enough usdBalance'}, 400);
     }
 
     usdAsset.balance -= totalPrice;
@@ -139,7 +139,7 @@ app.post('/coins/:coinName/sell', quantityChecker, setAuth, async (req, res) => 
     let { quantity, all } = req.body;
     const { coinName } = req.params;
     const coinSymbol = COINS[coinName];
-    if (!coinSymbol) return res.send({error: 'Invalid Coin name'}).status(400);
+    if (!coinSymbol) return res.send({error: 'Invalid Coin name'}, 400);
 
     const user = req.user;
     const usdAsset = await Asset.findOne({ user, name: 'USD' });
@@ -158,7 +158,7 @@ app.post('/coins/:coinName/sell', quantityChecker, setAuth, async (req, res) => 
     } else { // quantity 판매시
         totalQuantity = quantity;
         totalPrice = coinPrice * totalQuantity;
-        if (targetCoinBalance < totalQuantity) return res.send({ error: 'Not enough coinBalance'}).status(400);
+        if (targetCoinBalance < totalQuantity) return res.send({ error: 'Not enough coinBalance'}, 400);
     }
 
     usdAsset.balance += totalPrice;
