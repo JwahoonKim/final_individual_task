@@ -7,6 +7,18 @@ const encryptPassword = (password) => {
     return crypto.createHash('sha512').update(password).digest('base64');
 }
 
+const decimalCheck = (req, res, next) => {
+    const { quantity, all } = req.body;
+    if (quantity && !all) {
+        if (isNaN(quantity)) 
+            return res.send({ error: 'quantity must be a numberic value' }, 400);
+        const decimal = quantity.split('.')[1] || 0;
+        if (decimal.length > 4) 
+            return res.send({ error: 'Decimal point must be less than 4 digits'}, 400);
+    } 
+    next();
+}
+
 const setAuth = async (req, res, next) => {
     const authorization = req.headers.authorization;
     const [bearer, token] = authorization.split(' ');
@@ -17,11 +29,10 @@ const setAuth = async (req, res, next) => {
 
     const { publicKey } = jwt.decode(token);
     const keyObj = await Key.findOne({ publicKey });
-    console.log(keyObj);
 
     // 해당 키가 DB에 없는 경우
     if (!keyObj)
-        return res.send({error: 'Cannot find user'}).status(404);
+        return res.send({error: 'Invalid token'}).status(404);
 
     const { secretKey } = keyObj;
     try {
@@ -44,5 +55,5 @@ const setAuth = async (req, res, next) => {
 module.exports = {
     encryptPassword,
     setAuth,
-    // setAsset,
+    decimalCheck,
 }

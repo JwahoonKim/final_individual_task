@@ -5,7 +5,7 @@ const { body, validationResult } = require('express-validator');
 const crypto = require('crypto');
 // 폴더만 설정해주면 알아서 index.js 가져옴
 const { User, Coin, Asset, Key } = require('./models'); 
-const { encryptPassword, setAuth } = require('./utils');
+const { encryptPassword, setAuth, decimalCheck } = require('./utils');
 const { getCoinPrice } = require('./api');
 
 const app = express();
@@ -102,40 +102,38 @@ app.get('/balance', setAuth, async (req, res) => {
 
 app.get('/coins/:coinName', async (req, res) => {
     const { coinName } = req.params;
-    const coinSymbol = COINS[coinName.toLowerCase()];
+    const coinSymbol = COINS[coinName];
     const price = await getCoinPrice(coinSymbol);
     if ( price ) res.send({ price });
-    else res.send({error: 'Invalid Coin name, Please request by using FULLNAME of coin not SYMBOL!'}, 404);
+    else res.send({error: 'Invalid Coin name'}, 404);
 })
 
-app.post('/coins/:coinName/buy', setAuth, async (req, res) => {
+app.post('/coins/:coinName/buy', decimalCheck, setAuth, async (req, res) => {
     let { quantity, all } = req.body;
     const { coinName } = req.params;
     const coinSymbol = COINS[coinName];
-    if (!coinSymbol) return res.send({error: 'Invalid Coin name, Please request by using FULLNAME of coin not SYMBOL!'}, 400);
+    if (!coinSymbol) return res.send({ error: 'Invalid Coin name' }, 400);
     
-    if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
+    // if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
     
     const user = req.user;
     const usdAsset = await Asset.findOne({ user, name: 'USD' });
     let usdBalance = usdAsset.balance;
-    const targetCoinAsset = await Asset.findOne({ user, name: coinSymbol.toUpperCase()});
+    const targetCoinAsset = await Asset.findOne({ user, name: coinName });
 
     const coinPrice = await getCoinPrice(coinSymbol);
     let totalPrice = null;
     let totalQuantity = null;
 
-    if (all) { // 전량 구매시
+    if (all) { // 전량 구매시 => 여기 소숫점 처리하자
         totalQuantity = parseInt(usdBalance / coinPrice);
         totalPrice = coinPrice * totalQuantity;
     } else { // quantity 구매시
-        totalQuantity = parseFloat(parseFloat(quantity).toFixed(4));
+        totalQuantity = parseFloat(quantity);
         totalPrice = coinPrice * totalQuantity;
         // 잔고 부족
         if (usdBalance < totalPrice) return res.send({error: 'Not enough usdBalance'}, 400);
     }
-
-
 
     usdAsset.balance -= totalPrice;
     targetCoinAsset.balance += totalQuantity;
@@ -145,14 +143,14 @@ app.post('/coins/:coinName/buy', setAuth, async (req, res) => {
     res.send({ price: coinPrice, quantity: totalQuantity });
 });
 
-app.post('/coins/:coinName/sell', setAuth, async (req, res) => {
+app.post('/coins/:coinName/sell', decimalCheck, setAuth, async (req, res) => {
     // quantity가 숫자인지 check
     let { quantity, all } = req.body;
     const { coinName } = req.params;
     const coinSymbol = COINS[coinName];
-    if (!coinSymbol) return res.send({error: 'Invalid Coin name, Please request by using FULLNAME of coin not SYMBOL!'}, 400);
+    if (!coinSymbol) return res.send({error: 'Invalid Coin name'}, 400);
 
-    if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
+    // if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
 
     const user = req.user;
     const usdAsset = await Asset.findOne({ user, name: 'USD' });
