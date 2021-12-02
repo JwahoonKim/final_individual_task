@@ -7,14 +7,23 @@ const encryptPassword = (password) => {
     return crypto.createHash('sha512').update(password).digest('base64');
 }
 
-const decimalCheck = (req, res, next) => {
+// 소수점 4자리수로 바꾸는 함수
+const decimalCut = (n) => {
+    n *= 10000;
+    n = parseInt(n)
+    n /= 10000;
+    return n
+}
+
+const quantityChecker = (req, res, next) => {
     const { quantity, all } = req.body;
     if (quantity && !all) {
         if (isNaN(quantity)) 
-            return res.send({ error: 'quantity must be a numberic value' }, 400);
+            return res.send({ error: 'quantity must be a numberic value' }).status(400);
         const decimal = quantity.split('.')[1] || 0;
+        if (quantity < 0) return res.send({ error: 'quantity must be positive' }).status(400);
         if (decimal.length > 4) 
-            return res.send({ error: 'Decimal point must be less than 4 digits'}, 400);
+            return res.send({ error: 'Decimal point must be less than 4 digits'}).status(400);
     } 
     next();
 }
@@ -42,7 +51,7 @@ const setAuth = async (req, res, next) => {
         else return res.send({ error: 'Invalid JWT' }).status(403);
     }
 
-    const userObj = await User.findOne({ keyObj });
+    const userObj = await User.findOne({ _id: keyObj.user });
     
     // 해당 키에 해당하는 user정보가 DB에 없는 경우
     if (!userObj)
@@ -55,5 +64,6 @@ const setAuth = async (req, res, next) => {
 module.exports = {
     encryptPassword,
     setAuth,
-    decimalCheck,
+    decimalCut,
+    quantityChecker,
 }

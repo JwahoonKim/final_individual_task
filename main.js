@@ -5,7 +5,7 @@ const { body, validationResult } = require('express-validator');
 const crypto = require('crypto');
 // 폴더만 설정해주면 알아서 index.js 가져옴
 const { User, Coin, Asset, Key } = require('./models'); 
-const { encryptPassword, setAuth, decimalCheck } = require('./utils');
+const { encryptPassword, setAuth, quantityChecker, decimalCut } = require('./utils');
 const { getCoinPrice } = require('./api');
 
 const app = express();
@@ -23,12 +23,6 @@ const COINS = {
 
 app.use(express.urlencoded({extended: true}));
 app.use(express.json());
-
-// test용
-app.get('/', async (req, res) => {
-    const user = await User.findOne({ name: "kim123" }).populate('assets', 'name ');
-    res.send(user); 
-})
 
 app.post('/register',
     body('name').isLength({ min: 4, max: 12 }).isAlphanumeric(),
@@ -105,16 +99,14 @@ app.get('/coins/:coinName', async (req, res) => {
     const coinSymbol = COINS[coinName];
     const price = await getCoinPrice(coinSymbol);
     if ( price ) res.send({ price });
-    else res.send({error: 'Invalid Coin name'}, 404);
+    else res.send({error: 'Invalid Coin name'}).status(404);
 })
 
-app.post('/coins/:coinName/buy', decimalCheck, setAuth, async (req, res) => {
+app.post('/coins/:coinName/buy', quantityChecker, setAuth, async (req, res) => {
     let { quantity, all } = req.body;
     const { coinName } = req.params;
     const coinSymbol = COINS[coinName];
-    if (!coinSymbol) return res.send({ error: 'Invalid Coin name' }, 400);
-    
-    // if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
+    if (!coinSymbol) return res.send({ error: 'Invalid Coin name' }).status(400);
     
     const user = req.user;
     const usdAsset = await Asset.findOne({ user, name: 'USD' });
@@ -126,13 +118,13 @@ app.post('/coins/:coinName/buy', decimalCheck, setAuth, async (req, res) => {
     let totalQuantity = null;
 
     if (all) { // 전량 구매시 => 여기 소숫점 처리하자
-        totalQuantity = parseInt(usdBalance / coinPrice);
+        totalQuantity = decimalCut(usdBalance / coinPrice);
         totalPrice = coinPrice * totalQuantity;
     } else { // quantity 구매시
         totalQuantity = parseFloat(quantity);
         totalPrice = coinPrice * totalQuantity;
         // 잔고 부족
-        if (usdBalance < totalPrice) return res.send({error: 'Not enough usdBalance'}, 400);
+        if (usdBalance < totalPrice) return res.send({error: 'Not enough usdBalance'}).status(400);
     }
 
     usdAsset.balance -= totalPrice;
@@ -143,22 +135,19 @@ app.post('/coins/:coinName/buy', decimalCheck, setAuth, async (req, res) => {
     res.send({ price: coinPrice, quantity: totalQuantity });
 });
 
-app.post('/coins/:coinName/sell', decimalCheck, setAuth, async (req, res) => {
-    // quantity가 숫자인지 check
+app.post('/coins/:coinName/sell', quantityChecker, setAuth, async (req, res) => {
     let { quantity, all } = req.body;
     const { coinName } = req.params;
     const coinSymbol = COINS[coinName];
-    if (!coinSymbol) return res.send({error: 'Invalid Coin name'}, 400);
-
-    // if (isNaN(quantity) && !all) return res.send({error: 'quantity must be a numberic value'}, 400);
+    if (!coinSymbol) return res.send({error: 'Invalid Coin name'}).status(400);
 
     const user = req.user;
     const usdAsset = await Asset.findOne({ user, name: 'USD' });
-    const targetCoinAsset = await Asset.findOne({ user, name: coinSymbol.toUpperCase()});
+    const targetCoinAsset = await Asset.findOne({ user, name: coinName });
     let targetCoinBalance = targetCoinAsset.balance;
 
 
-    quantity = parseFloat(parseFloat(quantity).toFixed(4));
+    quantity = parseFloat(quantity);
     const coinPrice = await getCoinPrice(coinSymbol);
     let totalPrice = null;
     let totalQuantity = null;
@@ -167,9 +156,9 @@ app.post('/coins/:coinName/sell', decimalCheck, setAuth, async (req, res) => {
         totalQuantity = targetCoinBalance;
         totalPrice = coinPrice * totalQuantity;
     } else { // quantity 판매시
-        totalQuantity = parseFloat(parseFloat(quantity).toFixed(4));
+        totalQuantity = quantity;
         totalPrice = coinPrice * totalQuantity;
-        if (targetCoinBalance < totalQuantity) return res.send({ error: 'Not enough coinBalance'}, 400);
+        if (targetCoinBalance < totalQuantity) return res.send({ error: 'Not enough coinBalance'}).status(400);
     }
 
     usdAsset.balance += totalPrice;
@@ -179,7 +168,6 @@ app.post('/coins/:coinName/sell', decimalCheck, setAuth, async (req, res) => {
 
     res.send({ price: coinPrice, quantity: totalQuantity });
 });
-
 
 
 app.listen(port, () => {
